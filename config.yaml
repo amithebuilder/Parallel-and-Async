@@ -1,0 +1,45 @@
+# Example crawler configuration
+start_urls:
+  - "https://example.com"
+
+# Crawl limits
+max_pages: 50
+max_depth: 2
+max_concurrent: 10
+per_domain_limit: 3
+
+# Timeouts (seconds)
+timeout_connect: 10.0
+timeout_read: 30.0
+timeout_total: 60.0
+
+# Rate limiting
+requests_per_second: 2.0
+min_delay: 0.5
+jitter: 0.2
+
+# Politeness
+respect_robots: true
+user_agent: "AsyncCrawler/1.0"
+
+# Retry
+max_retries: 3
+backoff_factor: 2.0
+
+# URL filtering
+same_domain_only: true
+include_patterns: []
+exclude_patterns:
+  - "\\.(jpg|jpeg|png|gif|svg|css|js|ico|woff|woff2|ttf|eot)(\\?.*)?$"
+
+# Storage
+output_json: "results.jsonl"
+output_csv: ""
+output_sqlite: ""
+
+# Sitemap
+use_sitemap: false
+
+# Logging
+log_file: "crawler.log"
+log_level: "INFO"
