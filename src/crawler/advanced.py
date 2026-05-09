@@ -259,17 +259,25 @@ class AdvancedCrawler:
             self._progress.record_error()
             return None
 
-        # Rate limit
+        # Rate limit (config-based)
         await self._rate_limiter.acquire(url)
+
+        # Honour Crawl-delay from robots.txt (overrides rate limiter minimum)
+        if self._respect_robots and self._robots:
+            crawl_delay = self._robots.get_crawl_delay(url)
+            if crawl_delay > 0:
+                await asyncio.sleep(crawl_delay)
 
         # Semaphore
         await self._semaphore.acquire(url)
         start = time.monotonic()
         try:
-            html = await self._retry.execute_with_retry(self._client.fetch_url, url)
+            html, status_code, content_type = await self._retry.execute_with_retry(
+                self._client.fetch_with_meta, url
+            )
             data = await self._parser.parse_html(html, url)
-            data["status_code"] = 200
-            data["content_type"] = "text/html"
+            data["status_code"] = status_code
+            data["content_type"] = content_type
             duration = time.monotonic() - start
 
             self._queue.mark_processed(url)

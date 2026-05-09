@@ -59,5 +59,3 @@ secrets.yaml
 # Claude Code internal
 .claude/
 
-# Tests
-tests

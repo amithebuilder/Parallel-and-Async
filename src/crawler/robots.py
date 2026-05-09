@@ -57,16 +57,28 @@ class RobotsParser:
         return rules
 
     def _parse_robots_text(self, text: str) -> dict:
-        """Parse robots.txt content into structured rules."""
+        """Parse robots.txt content into structured rules.
+
+        Blank lines in robots.txt separate user-agent blocks.  We collect
+        User-agent values until we hit a directive line, then apply all
+        Disallow/Allow/Crawl-delay lines to that agent set.  A blank line
+        resets the agent set so the next block starts fresh.
+        """
         rules: dict = {"disallow": [], "allow": [], "crawl_delay": None}
         current_agents: list[str] = []
 
         for raw_line in text.splitlines():
-            line = raw_line.split("#", 1)[0].strip()
-            if not line:
+            stripped = raw_line.strip()
+
+            # Blank line or comment-only line → end of current block
+            if not stripped or stripped.startswith("#"):
+                current_agents = []
                 continue
-            if ":" not in line:
+
+            line = stripped.split("#", 1)[0].strip()
+            if not line or ":" not in line:
                 continue
+
             key, _, value = line.partition(":")
             key = key.strip().lower()
             value = value.strip()
@@ -74,6 +86,7 @@ class RobotsParser:
             if key == "user-agent":
                 current_agents.append(value)
             elif self._agent_matches(current_agents):
+                # Directives: stay in the same block (do NOT reset current_agents)
                 if key == "disallow" and value:
                     rules["disallow"].append(value)
                 elif key == "allow" and value:
@@ -83,9 +96,6 @@ class RobotsParser:
                         rules["crawl_delay"] = float(value)
                     except ValueError:
                         pass
-                # Reset agents for next block
-            if key != "user-agent":
-                current_agents = []
 
         return rules
 

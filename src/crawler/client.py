@@ -110,6 +110,50 @@ class AsyncCrawler:
                 )
                 raise
 
+    async def fetch_with_meta(self, url: str) -> tuple[str, int, str]:
+        """Fetch a URL and return (html, status_code, content_type).
+
+        Raises the same exceptions as :meth:`fetch_url`.
+        """
+        session = await self._ensure_session()
+        async with self._semaphore:
+            logger.info("Fetching (meta): %s", url)
+            start = time.monotonic()
+            try:
+                async with session.get(url) as response:
+                    response.raise_for_status()
+                    text = await response.text()
+                    elapsed = time.monotonic() - start
+                    status = response.status
+                    content_type = (
+                        response.headers.get("Content-Type", "text/html")
+                        .split(";")[0]
+                        .strip()
+                    )
+                    logger.info(
+                        "OK %s — %d, %.2fs, %d bytes",
+                        url, status, elapsed, len(text),
+                    )
+                    return text, status, content_type
+            except aiohttp.ClientResponseError as exc:
+                elapsed = time.monotonic() - start
+                logger.warning(
+                    "HTTP error %s — %d %s (%.2fs)",
+                    url, exc.status, exc.message, elapsed,
+                )
+                raise
+            except asyncio.TimeoutError:
+                elapsed = time.monotonic() - start
+                logger.warning("Timeout %s (%.2fs)", url, elapsed)
+                raise
+            except aiohttp.ClientError as exc:
+                elapsed = time.monotonic() - start
+                logger.warning(
+                    "Network error %s — %s: %s (%.2fs)",
+                    url, type(exc).__name__, exc, elapsed,
+                )
+                raise
+
     async def fetch_urls(self, urls: list[str]) -> dict[str, str]:
         """Fetch multiple URLs in parallel, returning {url: text} for successful ones."""
         tasks = {url: asyncio.create_task(self.fetch_url(url)) for url in urls}
