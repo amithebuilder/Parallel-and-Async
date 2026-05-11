@@ -204,14 +204,16 @@ class AdvancedCrawler:
         self._stats.start()
         results: list[dict] = []
         active_tasks: set[asyncio.Task] = set()
+        pages_attempted = 0  # total URLs dequeued (success + failure)
 
-        while (self._queue.pending_count > 0 or active_tasks) and len(results) < max_p:
-            # Launch new tasks up to the limit
-            while self._queue.pending_count > 0 and len(results) + len(active_tasks) < max_p:
+        while self._queue.pending_count > 0 or active_tasks:
+            # Launch new tasks until we hit max_p attempts
+            while self._queue.pending_count > 0 and pages_attempted < max_p:
                 item = await self._queue.get_next()
                 if item is None:
                     break
                 url, depth = item
+                pages_attempted += 1
                 task = asyncio.create_task(self._process_url(url, depth))
                 active_tasks.add(task)
 
@@ -230,7 +232,7 @@ class AdvancedCrawler:
             # Periodic progress logging
             self._progress.log_progress(self._queue.pending_count)
 
-        # Cancel remaining if we hit the page limit
+        # Cancel remaining tasks (if any slipped in before limit check)
         for t in active_tasks:
             t.cancel()
         if active_tasks:
@@ -251,13 +253,15 @@ class AdvancedCrawler:
             self._progress.record_error()
             return None
 
-        # Robots check
-        if self._respect_robots and self._robots and not self._robots.can_fetch(url):
-            logger.debug("Blocked by robots.txt: %s", url)
-            self._queue.mark_failed(url, "robots_blocked")
-            self._stats.record_failure(url, "RobotsBlocked")
-            self._progress.record_error()
-            return None
+        # Robots check — fetch on first encounter of each domain (cached after that)
+        if self._respect_robots and self._robots:
+            await self._robots.fetch_robots(url)
+            if not self._robots.can_fetch(url):
+                logger.debug("Blocked by robots.txt: %s", url)
+                self._queue.mark_failed(url, "robots_blocked")
+                self._stats.record_failure(url, "RobotsBlocked")
+                self._progress.record_error()
+                return None
 
         # Rate limit (config-based)
         await self._rate_limiter.acquire(url)
@@ -281,7 +285,7 @@ class AdvancedCrawler:
             duration = time.monotonic() - start
 
             self._queue.mark_processed(url)
-            self._stats.record_success(url, 200, len(html), duration)
+            self._stats.record_success(url, status_code, len(html), duration)
             self._progress.record_success()
             self._circuit.record_success(domain)
 

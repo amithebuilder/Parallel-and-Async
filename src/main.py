@@ -30,10 +30,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-concurrent", type=int, default=10)
     p.add_argument("--rate-limit", type=float, default=2.0,
                    help="Requests per second")
-    p.add_argument("--respect-robots", action="store_true", default=True)
     p.add_argument("--no-robots", action="store_true",
-                   help="Disable robots.txt checking")
-    p.add_argument("--same-domain", action="store_true", default=True)
+                   help="Disable robots.txt checking (default: enabled)")
+    p.add_argument("--no-same-domain", action="store_true",
+                   help="Allow crawling across different domains (default: same domain only)")
     p.add_argument("--user-agent", default="AsyncCrawler/1.0")
     p.add_argument("--output", help="JSON output file")
     p.add_argument("--output-csv", help="CSV output file")
@@ -50,9 +50,7 @@ async def run(args: argparse.Namespace) -> None:
     # Build from config file or CLI args
     if args.config:
         crawler = AdvancedCrawler.from_config(args.config)
-        if args.urls:
-            # CLI urls override config
-            pass
+        # args.urls (if provided) will override config start_urls via crawl(start_urls=)
     else:
         storages = []
         if args.output:
@@ -72,7 +70,7 @@ async def run(args: argparse.Namespace) -> None:
             max_concurrent=args.max_concurrent,
             requests_per_second=args.rate_limit,
             respect_robots=not args.no_robots,
-            same_domain_only=args.same_domain,
+            same_domain_only=not args.no_same_domain,
             user_agent=args.user_agent,
             storage=storage,
             use_sitemap=args.use_sitemap,
