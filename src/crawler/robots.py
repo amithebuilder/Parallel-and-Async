@@ -70,9 +70,13 @@ class RobotsParser:
         for raw_line in text.splitlines():
             stripped = raw_line.strip()
 
-            # Blank line or comment-only line → end of current block
-            if not stripped or stripped.startswith("#"):
+            # Blank line → end of current block
+            if not stripped:
                 current_agents = []
+                continue
+
+            # Comment-only line → skip without ending the current block
+            if stripped.startswith("#"):
                 continue
 
             line = stripped.split("#", 1)[0].strip()
