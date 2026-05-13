@@ -1,11 +1,14 @@
 """Day 1: Base async HTTP client for web crawling.
 Day 2 adds: fetch_and_parse integrating HTMLParser.
+Day 3 adds: crawl() — queue-based depth-limited crawl with visited/failed/processed sets.
 """
 
 import asyncio
+import heapq
 import logging
 import time
 from typing import Optional
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -163,6 +166,77 @@ class AsyncCrawler:
                 results[url] = await task
             except Exception as exc:
                 logger.error("Failed %s — %s: %s", url, type(exc).__name__, exc)
+        return results
+
+    async def crawl(
+        self,
+        start_urls: list[str],
+        max_pages: int = 50,
+        max_depth: int = 2,
+        same_domain_only: bool = True,
+    ) -> list[dict]:
+        """Queue-based breadth-first crawl (Day 3).
+
+        Populates three public sets on the instance after crawling:
+            visited_urls   — every URL that was enqueued
+            failed_urls    — URLs where fetch or parse raised an exception
+            processed_urls — URLs successfully fetched and parsed
+
+        Args:
+            start_urls:        Seed URLs to begin crawling from.
+            max_pages:         Stop after this many successful pages.
+            max_depth:         Maximum link depth from seed URLs.
+            same_domain_only:  Only follow links on the same domain(s) as seeds.
+
+        Returns:
+            List of parsed page dicts (url, title, links, text, …).
+        """
+        # Import here to avoid circular imports at module level
+        from crawler.parser import HTMLParser
+
+        self.visited_urls: set[str] = set()
+        self.failed_urls: set[str] = set()
+        self.processed_urls: set[str] = set()
+
+        allowed_domains: set[str] | None = (
+            {urlparse(u).netloc for u in start_urls} if same_domain_only else None
+        )
+        parser = HTMLParser()
+        results: list[dict] = []
+
+        # Min-heap: (depth, counter, url) — depth first, counter breaks ties
+        queue: list[tuple[int, int, str]] = []
+        _counter = 0
+        for url in start_urls:
+            if url not in self.visited_urls:
+                self.visited_urls.add(url)
+                heapq.heappush(queue, (0, _counter, url))
+                _counter += 1
+
+        while queue and len(results) < max_pages:
+            depth, _, url = heapq.heappop(queue)
+            try:
+                html = await self.fetch_url(url)
+                data = await parser.parse_html(html, url)
+                data["depth"] = depth
+                results.append(data)
+                self.processed_urls.add(url)
+
+                if depth < max_depth:
+                    for link in data.get("links", []):
+                        if link in self.visited_urls:
+                            continue
+                        if allowed_domains is not None:
+                            if urlparse(link).netloc not in allowed_domains:
+                                continue
+                        self.visited_urls.add(link)
+                        heapq.heappush(queue, (depth + 1, _counter, link))
+                        _counter += 1
+
+            except Exception as exc:
+                self.failed_urls.add(url)
+                logger.warning("crawl: failed %s — %s", url, exc)
+
         return results
 
     async def fetch_and_parse(self, url: str) -> dict:

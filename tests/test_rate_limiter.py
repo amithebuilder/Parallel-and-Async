@@ -1,12 +1,18 @@
-"""Tests for Day 4: RateLimiter and RobotsParser."""
+"""Tests for Day 4: RateLimiter and RobotsParser — robots HTTP mocked."""
 
 import asyncio
 import time
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from crawler.rate_limiter import RateLimiter
 from crawler.robots import RobotsParser
 
+
+# ---------------------------------------------------------------------------
+# RateLimiter tests
+# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_rate_limiter_enforces_delay():
@@ -18,7 +24,7 @@ async def test_rate_limiter_enforces_delay():
     await limiter.acquire(url)  # should wait ~0.5s
     elapsed = time.monotonic() - start
 
-    assert elapsed >= 0.4  # at least ~0.5s for 2 req/s
+    assert elapsed >= 0.4
 
 
 @pytest.mark.asyncio
@@ -27,10 +33,10 @@ async def test_rate_limiter_different_domains():
 
     start = time.monotonic()
     await limiter.acquire("https://a.com/1")
-    await limiter.acquire("https://b.com/1")  # different domain, no wait
+    await limiter.acquire("https://b.com/1")  # different domain — no wait
     elapsed = time.monotonic() - start
 
-    assert elapsed < 0.5  # should be nearly instant
+    assert elapsed < 0.5
 
 
 @pytest.mark.asyncio
@@ -39,7 +45,7 @@ async def test_rate_limiter_global_mode():
 
     start = time.monotonic()
     await limiter.acquire("https://a.com/1")
-    await limiter.acquire("https://b.com/1")  # global, should wait
+    await limiter.acquire("https://b.com/1")  # global — should wait
     elapsed = time.monotonic() - start
 
     assert elapsed >= 0.4
@@ -54,6 +60,10 @@ async def test_rate_limiter_stats():
     assert "total_waits" in stats
     assert "avg_wait_time" in stats
 
+
+# ---------------------------------------------------------------------------
+# RobotsParser tests
+# ---------------------------------------------------------------------------
 
 def test_robots_parser_path_matching():
     assert RobotsParser._path_matches("/admin/", "/admin/")
@@ -71,7 +81,23 @@ async def test_robots_can_fetch_no_rules():
 
 @pytest.mark.asyncio
 async def test_robots_fetch_and_check():
-    robots = RobotsParser(user_agent="*")
+    """fetch_robots() parses the file and can_fetch() enforces rules — HTTP mocked."""
+    robots_txt = "User-agent: *\nDisallow: /private/\n"
+
+    # Build a mock session whose get() returns a 200 with robots.txt content
+    resp = MagicMock()
+    resp.status = 200
+    resp.text = AsyncMock(return_value=robots_txt)
+
+    get_cm = MagicMock()
+    get_cm.__aenter__ = AsyncMock(return_value=resp)
+    get_cm.__aexit__ = AsyncMock(return_value=False)
+
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(return_value=get_cm)
+
+    robots = RobotsParser(user_agent="*", session=mock_session)
     await robots.fetch_robots("https://example.com")
-    # example.com has no robots.txt restrictions typically
-    assert robots.can_fetch("https://example.com/")
+
+    assert robots.can_fetch("https://example.com/public/page")
+    assert not robots.can_fetch("https://example.com/private/secret")
