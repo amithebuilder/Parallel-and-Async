@@ -39,6 +39,7 @@ class CrawlerQueue:
         self._pending: set[str] = set()
         self._processed: set[str] = set()
         self._failed: dict[str, str] = {}
+        self._depth_map: dict[str, int] = {}  # url -> depth
 
     @property
     def pending_count(self) -> int:
@@ -57,6 +58,7 @@ class CrawlerQueue:
         if url in self._pending or url in self._processed or url in self._failed:
             return False
         self._pending.add(url)
+        self._depth_map[url] = depth
         item = _QueueItem(
             priority=priority,
             insertion_order=self._counter,
@@ -67,13 +69,17 @@ class CrawlerQueue:
         heapq.heappush(self._heap, item)
         return True
 
-    async def get_next(self) -> tuple[str, int] | None:
-        """Pop and return (url, depth) or None if empty."""
+    async def get_next(self) -> str | None:
+        """Pop and return the next URL to process, or None if the queue is empty."""
         while self._heap:
             item = heapq.heappop(self._heap)
             if item.url in self._pending:
-                return item.url, item.depth
+                return item.url
         return None
+
+    def get_depth(self, url: str) -> int:
+        """Return the crawl depth recorded for *url* (0 if not tracked)."""
+        return self._depth_map.get(url, 0)
 
     def mark_processed(self, url: str) -> None:
         self._pending.discard(url)

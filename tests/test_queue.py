@@ -13,11 +13,13 @@ async def test_queue_basic():
     assert q.pending_count == 2
 
     # First out should be highest priority (lowest number)
-    item = await q.get_next()
-    assert item == ("https://a.com", 0)
+    url = await q.get_next()
+    assert url == "https://a.com"
+    assert q.get_depth("https://a.com") == 0
 
-    item = await q.get_next()
-    assert item == ("https://b.com", 1)
+    url = await q.get_next()
+    assert url == "https://b.com"
+    assert q.get_depth("https://b.com") == 1
 
     assert await q.get_next() is None
 
@@ -56,12 +58,9 @@ async def test_queue_priority_order():
     q.add_url("https://high.com", priority=0, depth=0)
     q.add_url("https://mid.com", priority=5, depth=0)
 
-    item = await q.get_next()
-    assert item[0] == "https://high.com"
-    item = await q.get_next()
-    assert item[0] == "https://mid.com"
-    item = await q.get_next()
-    assert item[0] == "https://low.com"
+    assert await q.get_next() == "https://high.com"
+    assert await q.get_next() == "https://mid.com"
+    assert await q.get_next() == "https://low.com"
 
 
 def test_url_filter_depth():

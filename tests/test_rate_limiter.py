@@ -17,11 +17,10 @@ from crawler.robots import RobotsParser
 @pytest.mark.asyncio
 async def test_rate_limiter_enforces_delay():
     limiter = RateLimiter(requests_per_second=2.0, per_domain=True, min_delay=0.0)
-    url = "https://example.com/1"
 
     start = time.monotonic()
-    await limiter.acquire(url)
-    await limiter.acquire(url)  # should wait ~0.5s
+    await limiter.acquire("example.com")
+    await limiter.acquire("example.com")  # same domain — should wait ~0.5s
     elapsed = time.monotonic() - start
 
     assert elapsed >= 0.4
@@ -32,8 +31,8 @@ async def test_rate_limiter_different_domains():
     limiter = RateLimiter(requests_per_second=1.0, per_domain=True)
 
     start = time.monotonic()
-    await limiter.acquire("https://a.com/1")
-    await limiter.acquire("https://b.com/1")  # different domain — no wait
+    await limiter.acquire("a.com")
+    await limiter.acquire("b.com")  # different domain — no wait
     elapsed = time.monotonic() - start
 
     assert elapsed < 0.5
@@ -44,8 +43,8 @@ async def test_rate_limiter_global_mode():
     limiter = RateLimiter(requests_per_second=2.0, per_domain=False)
 
     start = time.monotonic()
-    await limiter.acquire("https://a.com/1")
-    await limiter.acquire("https://b.com/1")  # global — should wait
+    await limiter.acquire("a.com")
+    await limiter.acquire("b.com")  # global bucket — should wait
     elapsed = time.monotonic() - start
 
     assert elapsed >= 0.4
@@ -54,8 +53,8 @@ async def test_rate_limiter_global_mode():
 @pytest.mark.asyncio
 async def test_rate_limiter_stats():
     limiter = RateLimiter(requests_per_second=10.0, per_domain=True)
-    await limiter.acquire("https://a.com/1")
-    await limiter.acquire("https://a.com/2")
+    await limiter.acquire("a.com")
+    await limiter.acquire("a.com")
     stats = limiter.get_stats()
     assert "total_waits" in stats
     assert "avg_wait_time" in stats

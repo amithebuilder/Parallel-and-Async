@@ -209,10 +209,10 @@ class AdvancedCrawler:
         while self._queue.pending_count > 0 or active_tasks:
             # Launch new tasks until we hit max_p attempts
             while self._queue.pending_count > 0 and pages_attempted < max_p:
-                item = await self._queue.get_next()
-                if item is None:
+                url = await self._queue.get_next()
+                if url is None:
                     break
-                url, depth = item
+                depth = self._queue.get_depth(url)
                 pages_attempted += 1
                 task = asyncio.create_task(self._process_url(url, depth))
                 active_tasks.add(task)
@@ -256,19 +256,19 @@ class AdvancedCrawler:
         # Robots check — fetch on first encounter of each domain (cached after that)
         if self._respect_robots and self._robots:
             await self._robots.fetch_robots(url)
-            if not self._robots.can_fetch(url):
+            if not self._robots.can_fetch(url, user_agent=self._user_agent):
                 logger.debug("Blocked by robots.txt: %s", url)
                 self._queue.mark_failed(url, "robots_blocked")
                 self._stats.record_failure(url, "RobotsBlocked")
                 self._progress.record_error()
                 return None
 
-        # Rate limit (config-based)
-        await self._rate_limiter.acquire(url)
+        # Rate limit (config-based) — pass domain, not full URL
+        await self._rate_limiter.acquire(domain)
 
         # Honour Crawl-delay from robots.txt (overrides rate limiter minimum)
         if self._respect_robots and self._robots:
-            crawl_delay = self._robots.get_crawl_delay(url)
+            crawl_delay = self._robots.get_crawl_delay(url, user_agent=self._user_agent)
             if crawl_delay > 0:
                 await asyncio.sleep(crawl_delay)
 
